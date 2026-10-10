@@ -1,6 +1,11 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const path = require('path');
+const prism = require('prism-media');
+
+// Ép voice sử dụng ffmpeg-static để giải mã audio chắc chắn phát ra tiếng
+const ffmpeg = require('ffmpeg-static');
+process.env.FFMPEG_PATH = ffmpeg;
 
 const client = new Client({
     intents: [
@@ -25,7 +30,7 @@ function playMp3File(guildId) {
         const player = createAudioPlayer();
         activePlayer = player;
 
-        // Sử dụng StreamType.Arbitrary để FFmpeg tự động nhận diện và giải mã file mp3 triệt để
+        // Sử dụng StreamType.Arbitrary kết hợp ffmpeg để giải mã tuyệt đối file bot.mp3
         const resource = createAudioResource(filePath, {
             inputType: StreamType.Arbitrary,
             inlineVolume: true
@@ -252,7 +257,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply(`🎯 Lựa chọn của bot: **${choice}**`);
     }
     else if (commandName === '8ball') {
-        const ans = ['Chắc chắn rồi!', 'Khả năng cao.', 'Hỏi lại sau.', 'Không thể.', 'Rất có thể!'];
+        const ans = ['Chắc chắn rồi!', 'Khả năng cao.', 'Hỏi lại sau.', 'Not sure.', 'Rất có thể!'];
         await interaction.reply(`🔮 Trả lời: **${ans[Math.floor(Math.random() * ans.length)]}**`);
     }
 });
