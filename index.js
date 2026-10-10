@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const path = require('path');
 
 const client = new Client({
@@ -25,9 +25,12 @@ function playMp3File(guildId) {
         const player = createAudioPlayer();
         activePlayer = player;
 
+        // Sử dụng StreamType.Arbitrary để FFmpeg tự động nhận diện và giải mã file mp3 triệt để
         const resource = createAudioResource(filePath, {
+            inputType: StreamType.Arbitrary,
             inlineVolume: true
         });
+        
         resource.volume.setVolume(currentVolume);
 
         player.play(resource);
@@ -39,8 +42,12 @@ function playMp3File(guildId) {
             }
         });
 
+        player.on('error', error => {
+            console.error('Lỗi phát Audio Player:', error.message);
+        });
+
     } catch (error) {
-        console.error('Lỗi khi phát audio:', error);
+        console.error('Lỗi khi khởi tạo audio resource:', error);
     }
 }
 
@@ -90,17 +97,25 @@ client.on('interactionCreate', async interaction => {
 
     if (commandName === 'treo') {
         await interaction.deferReply({ ephemeral: true });
-        const channelId = interaction.options.getString('channel_id');
-        const targetChannel = interaction.guild.channels.cache.get(channelId);
-        if (!targetChannel || targetChannel.type !== 2) {
-            return interaction.editReply('❌ ID phòng Voice không đúng hoặc không tồn tại!');
-        }
         try {
-            joinVoiceChannel({ channelId: targetChannel.id, guildId, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: true });
-            await interaction.editReply(`✅ Đã vào treo tại phòng **${targetChannel.name}**!`);
-        } catch (e) {
-            console.error(e);
-            await interaction.editReply('❌ Không thể kết nối vào phòng!');
+            const channelId = interaction.options.getString('channel_id');
+            const targetChannel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+            
+            if (!targetChannel || targetChannel.type !== 2) {
+                return await interaction.editReply('❌ ID phòng Voice không đúng, không tồn tại, hoặc bot không có quyền truy cập phòng này!');
+            }
+
+            joinVoiceChannel({
+                channelId: targetChannel.id,
+                guildId: guildId,
+                adapterCreator: interaction.guild.voiceAdapterCreator,
+                selfDeaf: true
+            });
+
+            await interaction.editReply(`✅ Đã vào treo thành công tại phòng **${targetChannel.name}**!`);
+        } catch (error) {
+            console.error('Lỗi khi treo voice:', error);
+            await interaction.editReply('❌ Có lỗi xảy ra khi kết nối vào phòng Voice!');
         }
     }
     else if (commandName === 'thoat') {
@@ -111,7 +126,9 @@ client.on('interactionCreate', async interaction => {
             activePlayer = null;
         }
         const conn = getVoiceConnection(guildId);
-        if (!conn) return interaction.editReply('❌ Bot chưa treo ở phòng nào!');
+        if (!conn) {
+            return await interaction.editReply('❌ Bot chưa treo ở phòng nào!');
+        }
         conn.destroy();
         await interaction.editReply('🛑 Đã cho bot rời khỏi phòng Voice!');
     }
@@ -119,7 +136,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.deferReply();
         const conn = getVoiceConnection(guildId);
         if (!conn) {
-            return interaction.editReply('❌ Bot phải ở trong phòng Voice mới phát được nhạc! Hãy dùng lệnh `/treo` trước.');
+            return await interaction.editReply('❌ Bot phải ở trong phòng Voice mới phát được nhạc! Hãy dùng lệnh `/treo` trước.');
         }
 
         try {
@@ -127,7 +144,7 @@ client.on('interactionCreate', async interaction => {
             playMp3File(guildId);
             await interaction.editReply(`🔁 Đang phát và **tự động lặp lại vô tận** file \`bot.mp3\` (Âm lượng: **${Math.round(currentVolume * 100)}%**)`);
         } catch (error) {
-            console.error(error);
+            console.error('Lỗi phát mp3:', error);
             await interaction.editReply('❌ Không tìm thấy file `bot.mp3` trên GitHub hoặc lỗi khi phát!');
         }
     }
@@ -186,8 +203,57 @@ client.on('interactionCreate', async interaction => {
             );
         await interaction.reply({ embeds: [embed] });
     }
-    else {
-        await interaction.reply(`✅ Đã thực thi lệnh **/${commandName}** thành công!`);
+    else if (commandName === 'ping') {
+        const sent = await interaction.reply({ content: '🏓 Đang đo...', fetchReply: true });
+        await interaction.editReply(`🏓 Phản hồi: \`${sent.createdTimestamp - interaction.createdTimestamp}ms\` | WebSocket: \`${Math.round(client.ws.ping)}ms\``);
+    }
+    else if (commandName === 'uptime') {
+        const s = Math.floor(client.uptime / 1000);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        await interaction.reply(`⏱️ Bot đã hoạt động: \`${h} giờ ${m} phút ${s % 60} giây\``);
+    }
+    else if (commandName === 'botinfo') {
+        await interaction.reply('🤖 Bot Treo Voice 24/7 siêu nhẹ, chạy song song Node.js & Flask trên Render!');
+    }
+    else if (commandName === 'serverinfo') {
+        const owner = await interaction.guild.fetchOwner();
+        const embed = new EmbedBuilder().setColor(0xFFD700).setTitle(`🏰 ${interaction.guild.name}`)
+            .addFields({ name: '👥 Thành viên', value: `${interaction.guild.memberCount}`, inline: true }, { name: '👑 Chủ Server', value: `${owner.user.tag}`, inline: true });
+        await interaction.reply({ embeds: [embed] });
+    }
+    else if (commandName === 'userinfo') {
+        const embed = new EmbedBuilder().setColor(0xF0E68C).setTitle(`👤 ${user.tag}`)
+            .addFields({ name: '🆔 ID', value: `\`${user.id}\``, inline: true });
+        await interaction.reply({ embeds: [embed] });
+    }
+    else if (commandName === 'avatar') {
+        const embed = new EmbedBuilder().setColor(0x0099FF).setTitle(`🖼️ Avatar Bot`).setImage(client.user.displayAvatarURL({ size: 1024 }));
+        await interaction.reply({ embeds: [embed] });
+    }
+    else if (commandName === 'roll') {
+        await interaction.reply(`🎲 Số ngẫu nhiên: **${Math.floor(Math.random() * 6) + 1}**`);
+    }
+    else if (commandName === 'coinflip') {
+        await interaction.reply(`🪙 Kết quả: **${Math.random() < 0.5 ? 'Sấp' : 'Ngửa'}**`);
+    }
+    else if (commandName === 'calc') {
+        const expr = interaction.options.getString('expression');
+        try {
+            const result = Function(`'use strict'; return (${expr})`)();
+            await interaction.reply(`🔢 Kết quả: \`${expr} = ${result}\``);
+        } catch {
+            await interaction.reply({ content: '❌ Biểu thức không hợp lệ!', ephemeral: true });
+        }
+    }
+    else if (commandName === 'choose') {
+        const list = interaction.options.getString('options').split(',');
+        const choice = list[Math.floor(Math.random() * list.length)].trim();
+        await interaction.reply(`🎯 Lựa chọn của bot: **${choice}**`);
+    }
+    else if (commandName === '8ball') {
+        const ans = ['Chắc chắn rồi!', 'Khả năng cao.', 'Hỏi lại sau.', 'Không thể.', 'Rất có thể!'];
+        await interaction.reply(`🔮 Trả lời: **${ans[Math.floor(Math.random() * ans.length)]}**`);
     }
 });
 
