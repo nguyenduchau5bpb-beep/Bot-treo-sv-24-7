@@ -3,19 +3,18 @@ const {
     joinVoiceChannel, 
     createAudioPlayer, 
     createAudioResource, 
-    AudioPlayerStatus, 
-    VoiceConnectionStatus 
+    AudioPlayerStatus 
 } = require('@discordjs/voice');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
 
-// --- 1. Web Server ảo duy trì Render (Chống Sleep) ---
+// --- 1. Web Server (Express) chống Sleep trên Render ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('🤖 Discord Music Bot (24/7 + Loop) đang hoạt động!');
+    res.send('🤖 Discord Music Bot (24/7 + Loop + Web Server) đang hoạt động!');
 });
 
 app.listen(PORT, () => {
@@ -33,13 +32,13 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID; 
 
-// Khai báo đường dẫn thư mục Musics (viết hoa chữ M khớp trên GitHub)
+// Thư mục chứa nhạc (Khớp chính xác chữ M viết hoa trên GitHub của bạn)
 const MUSIC_FOLDER = path.join(__dirname, 'Musics');
 
-// Biến quản lý trạng thái phát nhạc, hàng đợi và chế độ lặp (loopMode: 'off', 'track', 'queue')
+// Biến quản lý trạng thái phát nhạc và chế độ lặp
 const queueMap = new Map(); 
 
-// Đăng ký Slash Commands với Discord (Bổ sung thêm lệnh /loop)
+// Đăng ký các lệnh Slash Commands
 const commands = [
     new SlashCommandBuilder().setName('play').setDescription('Phát nhạc ngẫu nhiên từ kho nhạc của bot'),
     new SlashCommandBuilder().setName('skip').setDescription('Bỏ qua bài hiện tại, chuyển sang bài tiếp theo'),
@@ -117,9 +116,9 @@ client.on('interactionCreate', async interaction => {
                 connection,
                 player,
                 queue: [...files],
-                originalQueue: [...files], // Lưu lại danh sách gốc để phục vụ lặp toàn bộ
+                originalQueue: [...files],
                 currentTrack: null,
-                loopMode: 'off' // Mặc định tắt lặp
+                loopMode: 'off'
             };
             queueMap.set(guildId, serverQueue);
 
@@ -196,7 +195,6 @@ function playNext(guildId) {
     const serverQueue = queueMap.get(guildId);
     if (!serverQueue) return;
 
-    // Nếu đang bật chế độ lặp lại đúng 1 bài hiện tại
     if (serverQueue.loopMode === 'track' && serverQueue.currentTrack) {
         const filePath = path.join(MUSIC_FOLDER, serverQueue.currentTrack);
         const resource = createAudioResource(filePath);
@@ -205,13 +203,10 @@ function playNext(guildId) {
         return;
     }
 
-    // Nếu hết hàng đợi
     if (serverQueue.queue.length === 0) {
         if (serverQueue.loopMode === 'queue') {
-            // Lặp toàn bộ kho nhạc: nạp lại từ danh sách gốc
             serverQueue.queue = [...serverQueue.originalQueue];
         } else {
-            // Mặc định tự động làm mới vòng lặp ngẫu nhiên để treo 24/7 không bao giờ dừng
             serverQueue.queue = getMusicFiles();
         }
 
