@@ -1,9 +1,8 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
 const path = require('path');
-const prism = require('prism-media');
+const { spawn } = require('child_process');
 
-// Ép voice sử dụng ffmpeg-static để giải mã audio chắc chắn phát ra tiếng
 const ffmpeg = require('ffmpeg-static');
 process.env.FFMPEG_PATH = ffmpeg;
 
@@ -21,38 +20,88 @@ let currentVolume = 1.0;
 let activePlayer = null;
 let isLooping = false; 
 
-function playMp3File(guildId) {
+// 🔄 HÀM PHÁT NHẠC THÔNG MINH: AUTO ĐẢO QUA 3 CÁCH KHI CÓ LỖI
+function playMp3File(guildId, methodIndex = 1) {
     const conn = getVoiceConnection(guildId);
     if (!conn) return;
 
+    const filePath = path.join(__dirname, 'bot.mp3');
+    const player = createAudioPlayer();
+    activePlayer = player;
+
+    let resource;
+    let ffmpegProcess = null;
+
+    console.log(`🎵 Đang thử phát nhạc bằng Phương thức ${methodIndex}...`);
+
     try {
-        const filePath = path.join(__dirname, 'bot.mp3');
-        const player = createAudioPlayer();
-        activePlayer = player;
+        if (methodIndex === 1) {
+            // CÁCH 1: Dùng createAudioResource trực tiếp với tệp cục bộ (Standard Stream)
+            resource = createAudioResource(filePath, {
+                inlineVolume: true
+            });
+        } 
+        else if (methodIndex === 2) {
+            // CÁCH 2: Dùng StreamType.Arbitrary kết hợp FFmpeg tự động nhận diện
+            resource = createAudioResource(filePath, {
+                inputType: StreamType.Arbitrary,
+                inlineVolume: true
+            });
+        } 
+        else {
+            // CÁCH 3: Ép luồng thủ công qua FFmpeg Spawn (Raw PCM 48kHz Stereo)
+            ffmpegProcess = spawn(ffmpeg, [
+                '-i', filePath,
+                '-reconnect', '1',
+                '-reconnect_streamed', '1',
+                '-reconnect_delay_max', '5',
+                '-analyzeduration', '0',
+                '-loglevel', '0',
+                '-f', 's16le',
+                '-ar', '48000',
+                '-ac', '2',
+                'pipe:1'
+            ]);
 
-        // Sử dụng StreamType.Arbitrary kết hợp ffmpeg để giải mã tuyệt đối file bot.mp3
-        const resource = createAudioResource(filePath, {
-            inputType: StreamType.Arbitrary,
-            inlineVolume: true
-        });
-        
+            ffmpegProcess.on('error', (err) => {
+                console.error('Lỗi tiến trình FFmpeg:', err);
+            });
+
+            resource = createAudioResource(ffmpegProcess.stdout, {
+                inputType: StreamType.Raw,
+                inlineVolume: true
+            });
+        }
+
         resource.volume.setVolume(currentVolume);
-
         player.play(resource);
         conn.subscribe(player);
 
         player.on(AudioPlayerStatus.Idle, () => {
+            if (ffmpegProcess) { try { ffmpegProcess.kill(); } catch(e) {} }
             if (isLooping && activePlayer === player) {
-                playMp3File(guildId);
+                // Vòng lặp tiếp tục dùng phương thức hiện tại hoặc giữ ổn định
+                playMp3File(guildId, methodIndex);
             }
         });
 
         player.on('error', error => {
-            console.error('Lỗi phát Audio Player:', error.message);
+            console.error(`⚠️ Phương thức ${methodIndex} gặp lỗi:`, error.message);
+            if (ffmpegProcess) { try { ffmpegProcess.kill(); } catch(e) {} }
+
+            // 🔀 AUTO ĐẢO SANG CÁCH TIẾP THEO NẾU CÁCH TRƯỚC BỊ LỖI
+            if (methodIndex < 3 && activePlayer === player && isLooping) {
+                console.log(`🔄 Đang tự động đảo sang Phương thức ${methodIndex + 1}...`);
+                playMp3File(guildId, methodIndex + 1);
+            }
         });
 
     } catch (error) {
-        console.error('Lỗi khi khởi tạo audio resource:', error);
+        console.error(`❌ Khởi tạo phương thức ${methodIndex} thất bại:`, error);
+        // Tự động đảo cách nếu cách hiện tại sập ngay từ đầu
+        if (methodIndex < 3 && isLooping) {
+            playMp3File(guildId, methodIndex + 1);
+        }
     }
 }
 
@@ -146,8 +195,8 @@ client.on('interactionCreate', async interaction => {
 
         try {
             isLooping = true;
-            playMp3File(guildId);
-            await interaction.editReply(`🔁 Đang phát và **tự động lặp lại vô tận** file \`bot.mp3\` (Âm lượng: **${Math.round(currentVolume * 100)}%**)`);
+            playMp3File(guildId, 1); // Bắt đầu bằng phương thức 1, tự động đảo nếu lỗi
+            await interaction.editReply(`🔁 Đang phát và **tự động lặp lại vô tận** file \`bot.mp3\` (Hệ thống Auto-Fallback 3 cách đang hoạt động, Âm lượng: **${Math.round(currentVolume * 100)}%**)`);
         } catch (error) {
             console.error('Lỗi phát mp3:', error);
             await interaction.editReply('❌ Không tìm thấy file `bot.mp3` trên GitHub hoặc lỗi khi phát!');
@@ -257,7 +306,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply(`🎯 Lựa chọn của bot: **${choice}**`);
     }
     else if (commandName === '8ball') {
-        const ans = ['Chắc chắn rồi!', 'Khả năng cao.', 'Hỏi lại sau.', 'Not sure.', 'Rất có thể!'];
+        const ans = ['Chắc chắn rồi!', 'Khả năng cao.', 'Hỏi lại sau.', 'Không thể.', 'Rất có thể!'];
         await interaction.reply(`🔮 Trả lời: **${ans[Math.floor(Math.random() * ans.length)]}**`);
     }
 });
