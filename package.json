@@ -1,5 +1,5 @@
 {
-  "name": "discord-bot-hybrid",
+  "name": "discord-bot-audio-loop",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -9,6 +9,8 @@
     "@discordjs/voice": "^0.16.1",
     "@discordjs/opus": "^0.10.0",
     "discord.js": "^14.14.1",
-    "ffmpeg-static": "^5.2.0"
+    "express": "^4.19.2",
+    "ffmpeg-static": "^5.2.0",
+    "prism-media": "^1.3.5"
   }
 }
