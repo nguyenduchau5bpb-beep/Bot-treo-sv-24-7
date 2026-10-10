@@ -1,27 +1,20 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
-const { 
-    joinVoiceChannel, 
-    createAudioPlayer, 
-    createAudioResource, 
-    AudioPlayerStatus 
-} = require('@discordjs/voice');
-const fs = require('fs');
-const path = require('path');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require('express');
 
-// --- 1. Web Server (Express) chống Sleep trên Render ---
+// --- 1. Web Server ảo chống Sleep Render ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('🤖 Discord Music Bot (24/7 + Loop + Web Server) đang hoạt động!');
+    res.send('🤖 Bot Discord 20 Lệnh đang hoạt động 24/7!');
 });
 
 app.listen(PORT, () => {
     console.log(`🌐 Web server đang chạy tại cổng ${PORT}`);
 });
 
-// --- 2. Khởi tạo Bot Discord ---
+// --- 2. Khởi tạo Bot ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -32,198 +25,223 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID; 
 
-// Thư mục chứa nhạc (Khớp chính xác chữ M viết hoa trên GitHub của bạn)
-const MUSIC_FOLDER = path.join(__dirname, 'Musics');
-
-// Biến quản lý trạng thái phát nhạc và chế độ lặp
-const queueMap = new Map(); 
-
-// Đăng ký các lệnh Slash Commands
+// --- 3. Đăng ký ĐÚNG 20 Slash Commands (Phân quyền Admin) ---
 const commands = [
-    new SlashCommandBuilder().setName('play').setDescription('Phát nhạc ngẫu nhiên từ kho nhạc của bot'),
-    new SlashCommandBuilder().setName('skip').setDescription('Bỏ qua bài hiện tại, chuyển sang bài tiếp theo'),
-    new SlashCommandBuilder().setName('stop').setDescription('Dừng phát nhạc và đưa bot rời khỏi phòng'),
-    new SlashCommandBuilder().setName('queue').setDescription('Xem danh sách nhạc đang chờ'),
+    // 🔊 Quản lý Voice (Cần quyền Admin / ManageGuild)
     new SlashCommandBuilder()
-        .setName('loop')
-        .setDescription('Bật/tắt chế độ lặp bài hát')
-        .addStringOption(option =>
-            option.setName('mode')
-                .setDescription('Chọn kiểu lặp')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'Tắt lặp (Off)', value: 'off' },
-                    { name: 'Lặp bài hiện tại (Loop Song)', value: 'track' },
-                    { name: 'Lặp toàn bộ kho nhạc (Loop All)', value: 'queue' }
-                )
-        ),
+        .setName('treo')
+        .setDescription('1. [Admin] Treo bot trong phòng Voice 24/7 bằng ID')
+        .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+        
+    new SlashCommandBuilder()
+        .setName('thoat')
+        .setDescription('2. [Admin] Đưa bot rời khỏi phòng Voice')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    new SlashCommandBuilder()
+        .setName('say')
+        .setDescription('3. [Admin] Sai bot phát ngôn một tin nhắn')
+        .addStringOption(o => o.setName('message').setDescription('Nội dung tin nhắn').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    new SlashCommandBuilder()
+        .setName('restart')
+        .setDescription('4. [Admin] Khởi động lại bot từ xa')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+    // 📊 Trạng thái & Tiện ích (Ai cũng dùng được)
+    new SlashCommandBuilder().setName('status').setDescription('5. Xem trạng thái phòng treo và RAM tiêu thụ'),
+    new SlashCommandBuilder().setName('help').setDescription('6. Xem danh sách toàn bộ 20 lệnh của bot'),
+    new SlashCommandBuilder().setName('ping').setDescription('7. Kiểm tra độ trễ phản hồi của bot'),
+    new SlashCommandBuilder().setName('uptime').setDescription('8. Xem thời gian bot đã hoạt động liên tục'),
+    new SlashCommandBuilder().setName('botinfo').setDescription('9. Xem thông tin giới thiệu về bot'),
+    new SlashCommandBuilder().setName('serverinfo').setDescription('10. Xem thông tin cơ bản về Server này'),
+    new SlashCommandBuilder().setName('userinfo').setDescription('11. Xem thông tin tài khoản của bạn'),
+    new SlashCommandBuilder().setName('avatar').setDescription('12. Xem ảnh đại diện (Avatar) của bot'),
+
+    // 🎲 Giải trí & Tương tác (Ai cũng dùng được)
+    new SlashCommandBuilder().setName('roll').setDescription('13. Tung con xúc xắc ngẫu nhiên (1 - 6)'),
+    new SlashCommandBuilder().setName('coinflip').setDescription('14. Tung đồng xu (Sấp hoặc Ngửa)'),
+    new SlashCommandBuilder().setName('calc').setDescription('15. Tính phép toán đơn giản')
+        .addStringOption(o => o.setName('expression').setDescription('Ví dụ: 12 + 45 * 2').setRequired(true)),
+    new SlashCommandBuilder().setName('choose').setDescription('16. Nhờ bot lựa chọn ngẫu nhiên')
+        .addStringOption(o => o.setName('options').setDescription('Ví dụ: Cơm, Phở, Bún').setRequired(true)),
+    new SlashCommandBuilder().setName('8ball').setDescription('17. Hỏi quả cầu may mắn một câu hỏi')
+        .addStringOption(o => o.setName('question').setDescription('Câu hỏi').setRequired(true)),
+    new SlashCommandBuilder().setName('rate').setDescription('18. Cho bot chấm điểm 1 thứ gì đó')
+        .addStringOption(o => o.setName('thing').setDescription('Thứ cần chấm điểm').setRequired(true)),
+    new SlashCommandBuilder().setName('hug').setDescription('19. Gửi một cái ôm đến bạn bè')
+        .addUserOption(o => o.setName('user').setDescription('Thành viên muốn ôm').setRequired(true)),
+    new SlashCommandBuilder().setName('poke').setDescription('20. Chọc ghẹo một ai đó')
+        .addUserOption(o => o.setName('user').setDescription('Thành viên muốn chọc').setRequired(true)),
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
     console.log(`🤖 Bot đã sẵn sàng: ${client.user.tag}`);
-
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     try {
-        console.log('🔄 Đang đăng ký Slash Commands...');
+        console.log('🔄 Đang cập nhật 20 Slash Commands phân quyền Admin...');
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-        console.log('✅ Đã đăng ký Slash Commands thành công!');
+        console.log('✅ Cập nhật thành công 20 lệnh!');
     } catch (error) {
         console.error(error);
     }
 });
 
-function getMusicFiles() {
-    if (!fs.existsSync(MUSIC_FOLDER)) {
-        console.log("⚠️ Không tìm thấy thư mục Musics!");
-        return [];
-    }
-    return fs.readdirSync(MUSIC_FOLDER).filter(file => file.endsWith('.mp3'));
-}
-
+// --- 4. Xử lý các lệnh ---
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
+    const { commandName, guildId, user } = interaction;
 
-    const { commandName } = interaction;
-    const guildId = interaction.guildId;
-    const voiceChannel = interaction.member.voice.channel;
-
-    if (commandName === 'play') {
-        if (!voiceChannel) {
-            return interaction.reply({ content: '❌ Bạn phải vào một phòng Voice trước khi dùng lệnh này!', ephemeral: true });
+    // 1. /treo [Admin]
+    if (commandName === 'treo') {
+        const channelId = interaction.options.getString('channel_id');
+        const targetChannel = interaction.guild.channels.cache.get(channelId);
+        if (!targetChannel || targetChannel.type !== 2) {
+            return interaction.reply({ content: '❌ ID phòng Voice không đúng hoặc không tồn tại!', ephemeral: true });
         }
-
-        await interaction.deferReply();
-
-        const files = getMusicFiles();
-        if (files.length === 0) {
-            return interaction.editReply('⚠️ Không tìm thấy bài hát `.mp3` nào trong thư mục `Musics`!');
+        try {
+            joinVoiceChannel({ channelId: targetChannel.id, guildId, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: true });
+            await interaction.reply(`✅ Đã vào treo 24/7 tại phòng **${targetChannel.name}**!`);
+        } catch (e) {
+            await interaction.reply({ content: '❌ Không thể kết nối vào phòng!', ephemeral: true });
         }
-
-        let serverQueue = queueMap.get(guildId);
-
-        if (!serverQueue) {
-            const connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: guildId,
-                adapterCreator: interaction.guild.voiceAdapterCreator,
-                selfDeaf: true,
-            });
-
-            const player = createAudioPlayer();
-            connection.subscribe(player);
-
-            serverQueue = {
-                connection,
-                player,
-                queue: [...files],
-                originalQueue: [...files],
-                currentTrack: null,
-                loopMode: 'off'
-            };
-            queueMap.set(guildId, serverQueue);
-
-            player.on(AudioPlayerStatus.Idle, () => {
-                playNext(guildId);
-            });
-
-            player.on('error', error => {
-                console.error(`❌ Lỗi phát nhạc: ${error.message}`);
-                playNext(guildId);
-            });
-        } else {
-            serverQueue.queue.push(...files);
-            serverQueue.originalQueue = [...files];
-        }
-
-        if (!serverQueue.currentTrack) {
-            playNext(guildId);
-            interaction.editReply('🎶 Đang bắt đầu phát nhạc ngẫu nhiên từ thư mục `Musics`!');
-        } else {
-            interaction.editReply('➕ Đã thêm kho nhạc vào hàng đợi phát tiếp theo!');
-        }
-    } 
-    
-    else if (commandName === 'skip') {
-        const serverQueue = queueMap.get(guildId);
-        if (!serverQueue || !serverQueue.currentTrack) {
-            return interaction.reply({ content: '❌ Bot hiện không phát bài nào cả!', ephemeral: true });
-        }
-        serverQueue.player.stop(); 
-        await interaction.reply('⏭️ Đã chuyển sang bài tiếp theo!');
-    } 
-    
-    else if (commandName === 'stop') {
-        const serverQueue = queueMap.get(guildId);
-        if (!serverQueue) {
-            return interaction.reply({ content: '❌ Bot không có trong phòng Voice nào cả!', ephemeral: true });
-        }
-        serverQueue.queue = [];
-        serverQueue.player.stop();
-        serverQueue.connection.destroy();
-        queueMap.delete(guildId);
-        await interaction.reply('🛑 Đã dừng nhạc và cho bot rời phòng!');
     }
-    
-    else if (commandName === 'queue') {
-        const serverQueue = queueMap.get(guildId);
-        if (!serverQueue || serverQueue.queue.length === 0) {
-            return interaction.reply({ content: '🎵 Hàng đợi đang trống!', ephemeral: true });
-        }
-        const current = serverQueue.currentTrack ? `🎶 **Đang phát:** ${serverQueue.currentTrack} (Chế độ lặp: **${serverQueue.loopMode}**)\n\n` : '';
-        const list = serverQueue.queue.slice(0, 10).map((track, index) => `${index + 1}. ${track}`).join('\n');
-        await interaction.reply(`${current}📋 **Bài tiếp theo trong hàng đợi:**\n${list}`);
+    // 2. /thoat [Admin]
+    else if (commandName === 'thoat') {
+        const conn = getVoiceConnection(guildId);
+        if (!conn) return interaction.reply({ content: '❌ Bot chưa treo ở phòng nào!', ephemeral: true });
+        conn.destroy();
+        await interaction.reply('🛑 Đã cho bot rời khỏi phòng Voice!');
     }
+    // 3. /say [Admin]
+    else if (commandName === 'say') {
+        await interaction.channel.send(interaction.options.getString('message'));
+        await interaction.reply({ content: '✅ Đã gửi tin nhắn!', ephemeral: true });
+    }
+    // 4. /restart [Admin]
+    else if (commandName === 'restart') {
+        await interaction.reply('🔄 Đang khởi động lại bot...');
+        process.exit(0);
+    }
+    // 5. /status
+    else if (commandName === 'status') {
+        const conn = getVoiceConnection(guildId);
+        const statusText = conn ? `✅ Đang treo tại phòng ID: \`${conn.joinConfig.channelId}\`` : '❌ Chưa treo ở đâu';
+        const ram = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+        const embed = new EmbedBuilder().setColor(0x00FF00).setTitle('📊 Trạng Thái Bot')
+            .addFields({ name: '🔊 Voice', value: statusText }, { name: '💾 RAM', value: `\`${ram} MB\``, inline: true });
+        await interaction.reply({ embeds: [embed] });
+    }
+    // 6. /help
+    else if (commandName === 'help') {
+        const embed = new EmbedBuilder().setColor(0x0099FF).setTitle('📜 Danh sách 20 lệnh của Bot')
+            .setDescription(`
+**👑 Lệnh Admin (Quản trị viên):**
+1. \`/treo <id>\` - Treo phòng Voice 24/7
+2. \`/thoat\` - Rời phòng Voice
+3. \`/say <nội dung>\` - Gửi tin nhắn bằng bot
+4. \`/restart\` - Khởi động lại bot từ xa
 
-    else if (commandName === 'loop') {
-        const serverQueue = queueMap.get(guildId);
-        if (!serverQueue) {
-            return interaction.reply({ content: '❌ Bot chưa phát nhạc trong server này!', ephemeral: true });
+**🛠️ Tiện ích & Trạng thái:**
+5. \`/status\` - Xem phòng treo & RAM
+6. \`/help\` - Danh sách lệnh
+7. \`/ping\` - Kiểm tra độ trễ
+8. \`/uptime\` - Thời gian bot online
+9. \`/botinfo\` - Thông tin bot
+10. \`/serverinfo\` - Thông tin Server
+11. \`/userinfo\` - Thông tin cá nhân
+12. \`/avatar\` - Xem avatar bot
+
+**🎲 Giải trí & Tương tác:**
+13. \`/roll\` - Tung xúc xắc
+14. \`/coinflip\` - Tung đồng xu
+15. \`/calc <phép tính>\` - Tính toán
+16. \`/choose <các lựa chọn>\` - Chọn ngẫu nhiên
+17. \`/8ball <câu hỏi>\` - Bói toán vui
+18. \`/rate <thứ cần chấm>\` - Chấm điểm vui
+19. \`/hug <user>\` - Ôm người dùng
+20. \`/poke <user>\` - Chọc ghẹo người dùng
+            `);
+        await interaction.reply({ embeds: [embed] });
+    }
+    // 7. /ping
+    else if (commandName === 'ping') {
+        const sent = await interaction.reply({ content: '🏓 Đang đo...', fetchReply: true });
+        await interaction.editReply(`🏓 Phản hồi: \`${sent.createdTimestamp - interaction.createdTimestamp}ms\` | WebSocket: \`${Math.round(client.ws.ping)}ms\``);
+    }
+    // 8. /uptime
+    else if (commandName === 'uptime') {
+        const s = Math.floor(client.uptime / 1000);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        await interaction.reply(`⏱️ Bot đã hoạt động: \`${h} giờ ${m} phút ${s % 60} giây\``);
+    }
+    // 9. /botinfo
+    else if (commandName === 'botinfo') {
+        await interaction.reply('🤖 Bot Treo Voice 24/7 siêu nhẹ, hosted 24/7 trên Render!');
+    }
+    // 10. /serverinfo
+    else if (commandName === 'serverinfo') {
+        const owner = await interaction.guild.fetchOwner();
+        const embed = new EmbedBuilder().setColor(0xFFD700).setTitle(`🏰 ${interaction.guild.name}`)
+            .addFields({ name: '👥 Thành viên', value: `${interaction.guild.memberCount}`, inline: true }, { name: '👑 Chủ Server', value: `${owner.user.tag}`, inline: true });
+        await interaction.reply({ embeds: [embed] });
+    }
+    // 11. /userinfo
+    else if (commandName === 'userinfo') {
+        const embed = new EmbedBuilder().setColor(0xF0E68C).setTitle(`👤 ${user.tag}`)
+            .addFields({ name: '🆔 ID', value: `\`${user.id}\``, inline: true });
+        await interaction.reply({ embeds: [embed] });
+    }
+    // 12. /avatar
+    else if (commandName === 'avatar') {
+        const embed = new EmbedBuilder().setColor(0x0099FF).setTitle(`🖼️ Avatar Bot`).setImage(client.user.displayAvatarURL({ size: 1024 }));
+        await interaction.reply({ embeds: [embed] });
+    }
+    // 13. /roll
+    else if (commandName === 'roll') {
+        await interaction.reply(`🎲 Số ngẫu nhiên: **${Math.floor(Math.random() * 6) + 1}**`);
+    }
+    // 14. /coinflip
+    else if (commandName === 'coinflip') {
+        await interaction.reply(`🪙 Kết quả: **${Math.random() < 0.5 ? 'Sấp' : 'Ngửa'}**`);
+    }
+    // 15. /calc
+    else if (commandName === 'calc') {
+        const expr = interaction.options.getString('expression');
+        try {
+            const result = Function(`'use strict'; return (${expr})`)();
+            await interaction.reply(`🔢 Kết quả: \`${expr} = ${result}\``);
+        } catch {
+            await interaction.reply({ content: '❌ Biểu thức không hợp lệ!', ephemeral: true });
         }
-
-        const mode = interaction.options.getString('mode');
-        serverQueue.loopMode = mode;
-
-        let modeText = 'Tắt';
-        if (mode === 'track') modeText = 'Lặp lại bài hiện tại';
-        if (mode === 'queue') modeText = 'Lặp lại toàn bộ kho nhạc';
-
-        await interaction.reply(`🔁 Đã chuyển chế độ lặp thành: **${modeText}**`);
+    }
+    // 16. /choose
+    else if (commandName === 'choose') {
+        const list = interaction.options.getString('options').split(',');
+        const choice = list[Math.floor(Math.random() * list.length)].trim();
+        await interaction.reply(`🎯 Lựa chọn của bot: **${choice}**`);
+    }
+    // 17. /8ball
+    else if (commandName === '8ball') {
+        const ans = ['Chắc chắn rồi!', 'Khả năng cao.', 'Hỏi lại sau.', 'Không thể.', 'Rất có thể!'];
+        await interaction.reply(`🔮 Trả lời: **${ans[Math.floor(Math.random() * ans.length)]}**`);
+    }
+    // 18. /rate
+    else if (commandName === 'rate') {
+        const thing = interaction.options.getString('thing');
+        await interaction.reply(`⭐ Đánh giá **${thing}**: **${Math.floor(Math.random() * 10) + 1}/10** điểm!`);
+    }
+    // 19. /hug
+    else if (commandName === 'hug') {
+        await interaction.reply(`🤗 ${user} vừa ôm ${interaction.options.getUser('user')} thật ấm áp!`);
+    }
+    // 20. /poke
+    else if (commandName === 'poke') {
+        await interaction.reply(`👉 ${user} chọc ${interaction.options.getUser('user')} một cái!`);
     }
 });
-
-function playNext(guildId) {
-    const serverQueue = queueMap.get(guildId);
-    if (!serverQueue) return;
-
-    if (serverQueue.loopMode === 'track' && serverQueue.currentTrack) {
-        const filePath = path.join(MUSIC_FOLDER, serverQueue.currentTrack);
-        const resource = createAudioResource(filePath);
-        serverQueue.player.play(resource);
-        console.log(`🔁 Đang lặp lại bài: ${serverQueue.currentTrack}`);
-        return;
-    }
-
-    if (serverQueue.queue.length === 0) {
-        if (serverQueue.loopMode === 'queue') {
-            serverQueue.queue = [...serverQueue.originalQueue];
-        } else {
-            serverQueue.queue = getMusicFiles();
-        }
-
-        if (serverQueue.queue.length === 0) {
-            serverQueue.currentTrack = null;
-            return;
-        }
-    }
-
-    const randomIndex = Math.floor(Math.random() * serverQueue.queue.length);
-    const track = serverQueue.queue.splice(randomIndex, 1)[0];
-    serverQueue.currentTrack = track;
-
-    const filePath = path.join(MUSIC_FOLDER, track);
-    const resource = createAudioResource(filePath);
-    serverQueue.player.play(resource);
-    console.log(`🎶 Đang phát bài: ${track}`);
-}
 
 client.login(TOKEN);
