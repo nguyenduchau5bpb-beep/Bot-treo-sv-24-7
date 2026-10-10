@@ -12,12 +12,10 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID; 
 
-// Biến trạng thái âm thanh
 let currentVolume = 1.0; 
 let activePlayer = null;
 let isLooping = false; 
 
-// Hàm phát file bot.mp3 tự động lặp lại vô tận
 function playMp3File(guildId) {
     const conn = getVoiceConnection(guildId);
     if (!conn) return;
@@ -37,7 +35,7 @@ function playMp3File(guildId) {
 
         player.on(AudioPlayerStatus.Idle, () => {
             if (isLooping && activePlayer === player) {
-                playMp3File(guildId); // Tự động phát lại khi hết bài
+                playMp3File(guildId);
             }
         });
 
@@ -46,7 +44,6 @@ function playMp3File(guildId) {
     }
 }
 
-// Đăng ký Slash Commands
 const commands = [
     new SlashCommandBuilder().setName('treo').setDescription('1. Treo bot trong phòng Voice 24/7')
         .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true)),
@@ -92,51 +89,56 @@ client.on('interactionCreate', async interaction => {
     const { commandName, guildId, user } = interaction;
 
     if (commandName === 'treo') {
+        await interaction.deferReply({ ephemeral: true });
         const channelId = interaction.options.getString('channel_id');
         const targetChannel = interaction.guild.channels.cache.get(channelId);
         if (!targetChannel || targetChannel.type !== 2) {
-            return interaction.reply({ content: '❌ ID phòng Voice không đúng hoặc không tồn tại!', ephemeral: true });
+            return interaction.editReply('❌ ID phòng Voice không đúng hoặc không tồn tại!');
         }
         try {
             joinVoiceChannel({ channelId: targetChannel.id, guildId, adapterCreator: interaction.guild.voiceAdapterCreator, selfDeaf: true });
-            await interaction.reply(`✅ Đã vào treo tại phòng **${targetChannel.name}**!`);
+            await interaction.editReply(`✅ Đã vào treo tại phòng **${targetChannel.name}**!`);
         } catch (e) {
-            await interaction.reply({ content: '❌ Không thể kết nối vào phòng!', ephemeral: true });
+            console.error(e);
+            await interaction.editReply('❌ Không thể kết nối vào phòng!');
         }
     }
     else if (commandName === 'thoat') {
+        await interaction.deferReply({ ephemeral: true });
         isLooping = false;
         if (activePlayer) {
             activePlayer.stop();
             activePlayer = null;
         }
         const conn = getVoiceConnection(guildId);
-        if (!conn) return interaction.reply({ content: '❌ Bot chưa treo ở phòng nào!', ephemeral: true });
+        if (!conn) return interaction.editReply('❌ Bot chưa treo ở phòng nào!');
         conn.destroy();
-        await interaction.reply('🛑 Đã cho bot rời khỏi phòng Voice!');
+        await interaction.editReply('🛑 Đã cho bot rời khỏi phòng Voice!');
     }
     else if (commandName === 'playmp3') {
+        await interaction.deferReply();
         const conn = getVoiceConnection(guildId);
         if (!conn) {
-            return interaction.reply({ content: '❌ Bot phải ở trong phòng Voice mới phát được nhạc! Hãy dùng lệnh `/treo` trước.', ephemeral: true });
+            return interaction.editReply('❌ Bot phải ở trong phòng Voice mới phát được nhạc! Hãy dùng lệnh `/treo` trước.');
         }
 
         try {
             isLooping = true;
             playMp3File(guildId);
-            await interaction.reply(`🔁 Đang phát và **tự động lặp lại vô tận** file \`bot.mp3\` (Âm lượng: **${Math.round(currentVolume * 100)}%**)`);
+            await interaction.editReply(`🔁 Đang phát và **tự động lặp lại vô tận** file \`bot.mp3\` (Âm lượng: **${Math.round(currentVolume * 100)}%**)`);
         } catch (error) {
             console.error(error);
-            await interaction.reply({ content: '❌ Không tìm thấy file `bot.mp3` trên GitHub hoặc lỗi khi phát!', ephemeral: true });
+            await interaction.editReply('❌ Không tìm thấy file `bot.mp3` trên GitHub hoặc lỗi khi phát!');
         }
     }
     else if (commandName === 'xong') {
+        await interaction.deferReply();
         isLooping = false;
         if (activePlayer) {
             activePlayer.stop();
             activePlayer = null;
         }
-        await interaction.reply('🛑 Đã dừng phát nhạc và tắt chế độ lặp lại!');
+        await interaction.editReply('🛑 Đã dừng phát nhạc và tắt chế độ lặp lại!');
     }
     else if (commandName === 'am') {
         const volInput = interaction.options.getInteger('volume');
