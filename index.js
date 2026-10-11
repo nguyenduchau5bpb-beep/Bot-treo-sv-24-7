@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const http = require('http');
 
-// 1. Tạo Web Server giả lập cho Render (tránh lỗi Deploy Failed)
+// 1. Tạo Web Server giả lập cho Render
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot Treo Voice 24/7 is running!\n');
@@ -12,7 +12,7 @@ server.listen(PORT, () => {
     console.log(`🌐 Web server đang chạy trên cổng ${PORT}`);
 });
 
-// 2. Tự động quét các biến môi trường trên Render để lấy danh sách 6 bot
+// 2. Quét danh sách 6 bot từ biến môi trường
 function getBotsFromEnv() {
     const bots = [];
     for (let i = 1; i <= 6; i++) {
@@ -32,7 +32,6 @@ function getBotsFromEnv() {
 }
 
 const botsConfig = getBotsFromEnv();
-const activeBotInstances = [];
 
 // 3. Khởi tạo bộ lệnh chung cho tất cả các bot
 const baseCommands = [
@@ -73,100 +72,74 @@ botsConfig.forEach(config => {
         }
     });
 
-    const botInstance = {
-        id: currentBotId,
-        connectVoice: async (channelId, guild, voiceAdapterCreator) => {
-            try {
-                // Nếu bot này đang có kết nối cũ thì hủy trước
-                if (activeConnection) {
-                    try { activeConnection.destroy(); } catch (e) {}
-                }
-
-                // Thiết lập kết nối độc lập gắn liền với client và adapter riêng của guild đó
-                activeConnection = joinVoiceChannel({
-                    channelId: channelId,
-                    guildId: guild.id,
-                    adapterCreator: voiceAdapterCreator,
-                    selfDeaf: true,
-                    selfMute: true
-                });
-
-                // Cơ chế tự động kết nối lại nếu bị rớt mạng ngầm
-                activeConnection.on('stateChange', async (oldState, newState) => {
-                    if (newState.status === 'disconnected') {
-                        try {
-                            await Promise.race([
-                                targetConnection.rejoin(),
-                                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-                            ]);
-                        } catch (e) {
-                            try { activeConnection.destroy(); } catch (err) {}
-                            activeConnection = null;
-                        }
-                    }
-                });
-
-                return true;
-            } catch (err) {
-                console.error(`Bot ${currentBotId} lỗi join voice:`, err);
-                return false;
-            }
-        },
-        disconnectVoice: () => {
+    // Hàm kết nối voice độc lập cho từng bot
+    async function connectToVoice(channelId, guild) {
+        try {
             if (activeConnection) {
                 try { activeConnection.destroy(); } catch (e) {}
-                activeConnection = null;
-                return true;
             }
-            return false;
-        },
-        getStatus: () => activeConnection !== null
-    };
 
-    activeBotInstances.push(botInstance);
+            activeConnection = joinVoiceChannel({
+                channelId: channelId,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+                selfDeaf: true,
+                selfMute: true
+            });
+
+            activeConnection.on('stateChange', (oldState, newState) => {
+                if (newState.status === 'disconnected') {
+                    try { activeConnection.rejoin(); } catch (e) {}
+                }
+            });
+            return true;
+        } catch (err) {
+            console.error(`Bot ${currentBotId} lỗi join voice:`, err);
+            return false;
+        }
+    }
 
     client.on('interactionCreate', async interaction => {
         if (!interaction.isChatInputCommand()) return;
-        const { commandName, guildId, guild, options } = interaction;
+        const { commandName, guild, options } = interaction;
 
+        // Khi gõ lệnh /treo ở bất kỳ bot nào, bot đó sẽ xử lý và tự vào phòng của nó
         if (commandName === 'treo') {
             await interaction.deferReply({ ephemeral: true });
             const channelId = options.getString('channel_id');
-            const targetChannel = await guild.channels.fetch(channelId).catch(() => null);
             
+            const targetChannel = await guild.channels.fetch(channelId).catch(() => null);
             if (!targetChannel || targetChannel.type !== 2) {
                 return await interaction.editReply('❌ ID phòng Voice không hợp lệ!');
             }
 
-            await interaction.editReply(`⏳ Đang tiến hành đưa lần lượt 6 bot vào phòng (mỗi con cách nhau đúng 3 giây)...`);
+            // Tính toán độ trễ dựa trên ID của bot để các con bot tự vào lần lượt (Bot 1: 0s, Bot 2: 3s, Bot 3: 6s, v.v.)
+            const delayTime = (currentBotId - 1) * 3000;
 
-            // Vòng lặp tuần tự có độ trễ 3 giây tuyệt đối giữa các bot
-            for (let i = 0; i < activeBotInstances.length; i++) {
-                const b = activeBotInstances[i];
-                await b.connectVoice(targetChannel.id, guild, guild.voiceAdapterCreator);
-                
+            if (delayTime > 0) {
+                await new Promise(resolve => setTimeout(resolve, delayTime));
+            }
+
+            const success = await connectToVoice(channelId, guild);
+            if (success) {
                 try {
-                    await interaction.followUp({ content: `✅ **Bot ${b.id}** đã vào phòng **${targetChannel.name}** thành công!`, ephemeral: true });
+                    await interaction.followUp({ content: `✅ **Bot ${currentBotId}** đã vào phòng **${targetChannel.name}** thành công!`, ephemeral: true });
                 } catch (e) {}
-
-                // Chờ đúng 3 giây trước khi chuyển sang con bot tiếp theo
-                if (i < activeBotInstances.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                }
             }
         }
         else if (commandName === 'thoat') {
             await interaction.deferReply({ ephemeral: true });
-            activeBotInstances.forEach(b => b.disconnectVoice());
-            await interaction.editReply(`🛑 Đã lệnh cho **tất cả các bot** rời phòng voice.`);
+            if (activeConnection) {
+                activeConnection.destroy();
+                activeConnection = null;
+                await interaction.editReply(`🛑 **Bot ${currentBotId}** đã rời phòng voice.`);
+            } else {
+                await interaction.editReply(`❌ **Bot ${currentBotId}** không ở trong phòng nào.`);
+            }
         }
         else if (commandName === 'status') {
-            let statusText = '📊 **Trạng thái toàn bộ các Bot:**\n';
-            activeBotInstances.forEach(b => {
-                const state = b.getStatus() ? 'Đang treo voice 24/7' : 'Đang rảnh';
-                statusText += `- Bot ${b.id}: ${state}\n`;
-            });
-            await interaction.reply({ content: statusText, ephemeral: true });
+            const status = activeConnection ? 'Đang treo voice 24/7' : 'Đang rảnh';
+            await interaction.reply({ content: `📊 **Bot ${currentBotId}**: ${status}`, ephemeral: true });
         }
         else if (commandName === `treobot${currentBotId}`) {
             await interaction.deferReply({ ephemeral: true });
@@ -177,7 +150,7 @@ botsConfig.forEach(config => {
                 return await interaction.editReply('❌ ID phòng Voice không hợp lệ!');
             }
 
-            await botInstance.connectVoice(targetChannel.id, guild, guild.voiceAdapterCreator);
+            await connectToVoice(channelId, guild);
             await interaction.editReply(`✅ Riêng **Bot ${currentBotId}** đã vào phòng **${targetChannel.name}** thành công!`);
         }
     });
