@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const http = require('http');
 
-// 1. Tạo Web Server giả lập để Render luôn mở cổng (tránh lỗi Deploy Failed)
+// 1. Tạo Web Server giả lập cho Render (tránh lỗi Deploy Failed)
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot Treo Voice 24/7 is running!\n');
@@ -34,7 +34,24 @@ function getBotsFromEnv() {
 const botsConfig = getBotsFromEnv();
 const activeBotInstances = [];
 
-// 3. Khởi chạy từng bot một cách độc lập
+// 3. Khởi tạo bộ lệnh chung cho tất cả các bot
+const baseCommands = [
+    new SlashCommandBuilder().setName('treo').setDescription('Đưa TẤT CẢ các bot vào phòng Voice (cách nhau 3 giây)')
+        .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true)),
+    new SlashCommandBuilder().setName('thoat').setDescription('Đưa tất cả bot rời khỏi phòng Voice'),
+    new SlashCommandBuilder().setName('status').setDescription('Xem trạng thái hoạt động của các bot'),
+];
+
+botsConfig.forEach(bot => {
+    baseCommands.push(
+        new SlashCommandBuilder().setName(`treobot${bot.id}`).setDescription(`Đưa riêng Bot ${bot.id} vào phòng Voice`)
+            .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true))
+    );
+});
+
+const commandsJson = baseCommands.map(command => command.toJSON());
+
+// 4. Khởi chạy từng bot độc lập
 botsConfig.forEach(config => {
     const client = new Client({
         intents: [
@@ -45,36 +62,6 @@ botsConfig.forEach(config => {
 
     const currentBotId = config.id;
     let activeConnection = null;
-
-    // Thiết lập bộ lệnh cho từng bot
-    const botCommands = [
-        new SlashCommandBuilder().setName('treo').setDescription('Đưa bot vào phòng Voice')
-            .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true)),
-        new SlashCommandBuilder().setName('thoat').setDescription('Đưa bot rời khỏi phòng Voice'),
-        new SlashCommandBuilder().setName('status').setDescription('Xem trạng thái hoạt động của bot'),
-        new SlashCommandBuilder().setName(`treobot${currentBotId}`).setDescription(`Đưa riêng Bot ${currentBotId} vào phòng Voice`)
-            .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true))
-    ];
-
-    // Riêng Bot 1 được cấp quyền tổng quản lý
-    if (currentBotId === 1) {
-        botCommands.push(
-            new SlashCommandBuilder().setName('treotatca').setDescription('Đưa TẤT CẢ các bot vào phòng (cách nhau 3 giây)')
-                .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true)),
-            new SlashCommandBuilder().setName('thoattatca').setDescription('Đưa tất cả bot rời khỏi phòng Voice')
-        );
-
-        for (let i = 1; i <= 6; i++) {
-            botCommands.push(
-                new SlashCommandBuilder().setName(`treobot${i}`).setDescription(`[Bot 1 quản lý] Đưa riêng Bot ${i} vào phòng Voice`)
-                    .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true))
-            );
-        }
-    }
-
-    // Loại bỏ lệnh trùng lặp
-    const uniqueCommands = Array.from(new Map(botCommands.map(cmd => [cmd.name, cmd])).values());
-    const commandsJson = uniqueCommands.map(command => command.toJSON());
 
     client.once('ready', async () => {
         console.log(`🤖 [Thuần Treo] Bot ${currentBotId} đã sẵn sàng: ${client.user.tag}`);
@@ -88,24 +75,37 @@ botsConfig.forEach(config => {
 
     const botInstance = {
         id: currentBotId,
-        connectVoice: async (targetChannel, guildId) => {
+        connectVoice: async (channelId, guild, voiceAdapterCreator) => {
             try {
+                // Nếu bot này đang có kết nối cũ thì hủy trước
                 if (activeConnection) {
                     try { activeConnection.destroy(); } catch (e) {}
                 }
+
+                // Thiết lập kết nối độc lập gắn liền với client và adapter riêng của guild đó
                 activeConnection = joinVoiceChannel({
-                    channelId: targetChannel.id,
-                    guildId: guildId,
-                    adapterCreator: targetChannel.guild.voiceAdapterCreator,
+                    channelId: channelId,
+                    guildId: guild.id,
+                    adapterCreator: voiceAdapterCreator,
                     selfDeaf: true,
                     selfMute: true
                 });
 
-                activeConnection.on('stateChange', (oldState, newState) => {
+                // Cơ chế tự động kết nối lại nếu bị rớt mạng ngầm
+                activeConnection.on('stateChange', async (oldState, newState) => {
                     if (newState.status === 'disconnected') {
-                        try { activeConnection.rejoin(); } catch (e) {}
+                        try {
+                            await Promise.race([
+                                targetConnection.rejoin(),
+                                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+                            ]);
+                        } catch (e) {
+                            try { activeConnection.destroy(); } catch (err) {}
+                            activeConnection = null;
+                        }
                     }
                 });
+
                 return true;
             } catch (err) {
                 console.error(`Bot ${currentBotId} lỗi join voice:`, err);
@@ -114,7 +114,7 @@ botsConfig.forEach(config => {
         },
         disconnectVoice: () => {
             if (activeConnection) {
-                activeConnection.destroy();
+                try { activeConnection.destroy(); } catch (e) {}
                 activeConnection = null;
                 return true;
             }
@@ -127,99 +127,58 @@ botsConfig.forEach(config => {
 
     client.on('interactionCreate', async interaction => {
         if (!interaction.isChatInputCommand()) return;
-        const { commandName, guildId } = interaction;
+        const { commandName, guildId, guild, options } = interaction;
 
-        // Xử lý các lệnh quản lý tổng của Bot 1
-        if (currentBotId === 1) {
-            if (commandName === 'treotatca') {
-                await interaction.deferReply({ ephemeral: true });
-                const channelId = interaction.options.getString('channel_id');
-                const targetChannel = await interaction.guild.channels.fetch(channelId).catch(() => null);
-                
-                if (!targetChannel || targetChannel.type !== 2) {
-                    return await interaction.editReply('❌ ID phòng Voice không hợp lệ!');
-                }
-
-                await interaction.editReply(`⏳ Bot 1 đang đưa lần lượt 6 bot vào phòng (mỗi con cách nhau 3 giây)...`);
-
-                for (let i = 0; i < activeBotInstances.length; i++) {
-                    const b = activeBotInstances[i];
-                    await b.connectVoice(targetChannel, guildId);
-                    try {
-                        await interaction.followUp({ content: `✅ **Bot ${b.id}** đã vào phòng **${targetChannel.name}** thành công!`, ephemeral: true });
-                    } catch (e) {}
-
-                    if (i < activeBotInstances.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                    }
-                }
-                return;
-            }
-            else if (commandName === 'thoattatca') {
-                await interaction.deferReply({ ephemeral: true });
-                activeBotInstances.forEach(b => b.disconnectVoice());
-                await interaction.editReply(`🛑 Bot 1 đã lệnh cho **tất cả các bot** rời phòng voice.`);
-                return;
-            }
-            else if (commandName.startsWith('treobot')) {
-                const targetId = parseInt(commandName.replace('treobot', ''));
-                if (!isNaN(targetId) && targetId >= 1 && targetId <= 6) {
-                    await interaction.deferReply({ ephemeral: true });
-                    const channelId = interaction.options.getString('channel_id');
-                    const targetChannel = await interaction.guild.channels.fetch(channelId).catch(() => null);
-                    
-                    if (!targetChannel || targetChannel.type !== 2) {
-                        return await interaction.editReply('❌ ID phòng Voice không hợp lệ!');
-                    }
-
-                    const targetBot = activeBotInstances.find(b => b.id === targetId);
-                    if (targetBot) {
-                        await targetBot.connectVoice(targetChannel, guildId);
-                        await interaction.editReply(`✅ Bot 1 đã điều khiển **Bot ${targetId}** vào phòng **${targetChannel.name}** thành công!`);
-                    } else {
-                        await interaction.editReply(`❌ Không tìm thấy Bot ${targetId}!`);
-                    }
-                    return;
-                }
-            }
-        }
-
-        // Xử lý các lệnh cơ bản và lệnh riêng của từng bot
         if (commandName === 'treo') {
             await interaction.deferReply({ ephemeral: true });
-            const channelId = interaction.options.getString('channel_id');
-            const targetChannel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+            const channelId = options.getString('channel_id');
+            const targetChannel = await guild.channels.fetch(channelId).catch(() => null);
             
             if (!targetChannel || targetChannel.type !== 2) {
                 return await interaction.editReply('❌ ID phòng Voice không hợp lệ!');
             }
 
-            await botInstance.connectVoice(targetChannel, guildId);
-            await interaction.editReply(`✅ **Bot ${currentBotId}** đã vào phòng **${targetChannel.name}** thành công!`);
-        }
-        else if (commandName === `treobot${currentBotId}`) {
-            await interaction.deferReply({ ephemeral: true });
-            const channelId = interaction.options.getString('channel_id');
-            const targetChannel = await interaction.guild.channels.fetch(channelId).catch(() => null);
-            
-            if (!targetChannel || targetChannel.type !== 2) {
-                return await interaction.editReply('❌ ID phòng Voice không hợp lệ!');
-            }
+            await interaction.editReply(`⏳ Đang tiến hành đưa lần lượt 6 bot vào phòng (mỗi con cách nhau đúng 3 giây)...`);
 
-            await botInstance.connectVoice(targetChannel, guildId);
-            await interaction.editReply(`✅ Riêng **Bot ${currentBotId}** đã vào phòng **${targetChannel.name}** thành công!`);
+            // Vòng lặp tuần tự có độ trễ 3 giây tuyệt đối giữa các bot
+            for (let i = 0; i < activeBotInstances.length; i++) {
+                const b = activeBotInstances[i];
+                await b.connectVoice(targetChannel.id, guild, guild.voiceAdapterCreator);
+                
+                try {
+                    await interaction.followUp({ content: `✅ **Bot ${b.id}** đã vào phòng **${targetChannel.name}** thành công!`, ephemeral: true });
+                } catch (e) {}
+
+                // Chờ đúng 3 giây trước khi chuyển sang con bot tiếp theo
+                if (i < activeBotInstances.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                }
+            }
         }
         else if (commandName === 'thoat') {
             await interaction.deferReply({ ephemeral: true });
-            if (botInstance.disconnectVoice()) {
-                await interaction.editReply(`🛑 **Bot ${currentBotId}** đã rời phòng voice.`);
-            } else {
-                await interaction.editReply(`❌ **Bot ${currentBotId}** không ở trong phòng nào.`);
-            }
+            activeBotInstances.forEach(b => b.disconnectVoice());
+            await interaction.editReply(`🛑 Đã lệnh cho **tất cả các bot** rời phòng voice.`);
         }
         else if (commandName === 'status') {
-            const status = botInstance.getStatus() ? 'Đang treo voice 24/7' : 'Đang rảnh';
-            await interaction.reply({ content: `📊 **Bot ${currentBotId}**: ${status}`, ephemeral: true });
+            let statusText = '📊 **Trạng thái toàn bộ các Bot:**\n';
+            activeBotInstances.forEach(b => {
+                const state = b.getStatus() ? 'Đang treo voice 24/7' : 'Đang rảnh';
+                statusText += `- Bot ${b.id}: ${state}\n`;
+            });
+            await interaction.reply({ content: statusText, ephemeral: true });
+        }
+        else if (commandName === `treobot${currentBotId}`) {
+            await interaction.deferReply({ ephemeral: true });
+            const channelId = options.getString('channel_id');
+            const targetChannel = await guild.channels.fetch(channelId).catch(() => null);
+            
+            if (!targetChannel || targetChannel.type !== 2) {
+                return await interaction.editReply('❌ ID phòng Voice không hợp lệ!');
+            }
+
+            await botInstance.connectVoice(targetChannel.id, guild, guild.voiceAdapterCreator);
+            await interaction.editReply(`✅ Riêng **Bot ${currentBotId}** đã vào phòng **${targetChannel.name}** thành công!`);
         }
     });
 
