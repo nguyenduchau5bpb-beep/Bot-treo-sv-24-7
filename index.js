@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 
-// 🤖 ĐỌC DANH SÁCH 6 BOT TỪ BIẾN MÔI TRƯỜNG BOTS_DATA (DẠNG JSON)
+// Đọc danh sách bot từ biến môi trường BOTS_DATA (dạng JSON)
 let botsConfig = [];
 try {
     botsConfig = JSON.parse(process.env.BOTS_DATA || '[]');
@@ -13,15 +13,15 @@ if (botsConfig.length === 0) {
     console.warn("⚠️ Cảnh báo: Chưa có bot nào được cấu hình trong BOTS_DATA!");
 }
 
-// 🛠️ TẠO HỆ THỐNG LỆNH SLASH COMMAND
+// Tạo hệ thống lệnh Slash Command chung
 const baseCommands = [
-    new SlashCommandBuilder().setName('treo').setDescription('Đưa TẤT CẢ các bot vào chung 1 phòng Voice')
+    new SlashCommandBuilder().setName('treo').setDescription('Đưa TẤT CẢ các bot hợp lệ vào chung 1 phòng Voice')
         .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true)),
     new SlashCommandBuilder().setName('thoat').setDescription('Đưa tất cả bot rời khỏi phòng Voice'),
-    new SlashCommandBuilder().setDescription('Xem trạng thái hoạt động của bot').setName('status'),
+    new SlashCommandBuilder().setName('status').setDescription('Xem trạng thái hoạt động của các bot'),
 ];
 
-// Tự động sinh lệnh riêng cho từng bot (/treobot1, /treobot2, ..., /treobot6)
+// Tự động thêm lệnh riêng cho từng bot (/treobot1, /treobot2, ...)
 botsConfig.forEach(bot => {
     baseCommands.push(
         new SlashCommandBuilder().setName(`treobot${bot.id}`).setDescription(`Đưa riêng ${bot.name} vào phòng Voice`)
@@ -31,7 +31,7 @@ botsConfig.forEach(bot => {
 
 const commandsJson = baseCommands.map(command => command.toJSON());
 
-// Khởi chạy từng bot song song
+// Khởi chạy từng bot, bọc try-catch để nếu token lỗi sẽ tự động bỏ qua không làm sập server
 botsConfig.forEach(config => {
     if (!config.token || !config.clientId) return;
 
@@ -58,7 +58,7 @@ botsConfig.forEach(config => {
         if (!interaction.isChatInputCommand()) return;
         const { commandName, guildId } = interaction;
 
-        // 1. Lệnh /treo chung: Đưa tất cả bot vào chung 1 phòng
+        // 1. Lệnh /treo chung: Đưa tất cả bot đang hoạt động vào chung 1 phòng
         if (commandName === 'treo') {
             await interaction.deferReply({ ephemeral: true });
             try {
@@ -82,7 +82,7 @@ botsConfig.forEach(config => {
                 await interaction.editReply('❌ Có lỗi xảy ra khi kết nối!');
             }
         }
-        // 2. Lệnh riêng cho từng bot (/treobot1, /treobot2, ..., /treobot6)
+        // 2. Lệnh riêng cho từng bot (/treobot1, /treobot2, ...)
         else if (commandName === `treobot${config.id}`) {
             await interaction.deferReply({ ephemeral: true });
             try {
@@ -125,6 +125,8 @@ botsConfig.forEach(config => {
         }
     });
 
-    client.login(config.token);
+    // Bắt lỗi Token không hợp lệ để bot tự bỏ qua, không làm sập server
+    client.login(config.token).catch(err => {
+        console.error(`⚠️ Bỏ qua ${config.name} do Token không hợp lệ:`, err.message);
+    });
 });
- 
