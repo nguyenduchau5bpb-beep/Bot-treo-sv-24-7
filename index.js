@@ -1,11 +1,21 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
+const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const filePath = path.join(__dirname, 'tokens.json');
+// 1. Tạo Web Server giả lập để Render không bao giờ báo lỗi Deploy Failed
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot Treo Voice 24/7 is running!\n');
+});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`🌐 Web server đang chạy trên cổng ${PORT}`);
+});
 
-// Đảm bảo file tokens.json luôn tồn tại
+// 2. Quản lý tokens.json
+const filePath = path.join(__dirname, 'tokens.json');
 if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, JSON.stringify([], null, 2), 'utf8');
 }
@@ -38,7 +48,6 @@ function startBots() {
 
     const botsConfig = loadBotsConfig();
 
-    // Các lệnh luôn luôn có sẵn kể cả khi chưa có token nào trong file
     const baseCommands = [
         new SlashCommandBuilder().setName('treo').setDescription('Đưa TẤT CẢ các bot hợp lệ vào chung 1 phòng Voice')
             .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true)),
@@ -60,7 +69,6 @@ function startBots() {
 
     const commandsJson = baseCommands.map(command => command.toJSON());
 
-    // Nếu chưa có bot nào trong file, ta đăng ký lệnh tạm qua một client giả lập hoặc chờ người dùng add token
     if (botsConfig.length === 0) {
         console.log("⚠️ Chưa có token nào trong tokens.json. Hãy dùng lệnh /addtoken trong Discord để thêm bot!");
         return;
