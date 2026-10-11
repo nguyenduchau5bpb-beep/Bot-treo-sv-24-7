@@ -1,17 +1,13 @@
 {
-  "name": "discord-bot-audio-loop",
+  "name": "discord-voice-bot",
   "version": "1.0.0",
+  "description": "Bot Discord thuần treo voice 24/7",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.16.1",
-    "discord.js": "^14.14.1",
-    "express": "^4.19.2",
-    "ffmpeg-static": "^5.2.0",
-    "prism-media": "^1.3.5",
-    "sodium-native": "^4.0.4"
+    "discord.js": "^14.14.1"
   }
 }
