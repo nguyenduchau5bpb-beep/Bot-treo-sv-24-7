@@ -1,10 +1,12 @@
 from flask import Flask
+import os
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🤖 Python Flask Web Server đang hoạt động chống sleep cho Bot Discord!"
+    return "Bot Discord đang chạy thuần treo 24/7!"
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3000)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
