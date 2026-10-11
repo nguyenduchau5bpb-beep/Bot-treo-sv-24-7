@@ -12,7 +12,7 @@ server.listen(PORT, () => {
     console.log(`🌐 Web server đang chạy trên cổng ${PORT}`);
 });
 
-// 2. Tự động quét các biến môi trường trên Render để lấy danh sách bot (từ 1 đến 6)
+// 2. Tự động quét các biến môi trường trên Render để lấy danh sách 6 bot
 function getBotsFromEnv() {
     const bots = [];
     for (let i = 1; i <= 6; i++) {
@@ -37,7 +37,7 @@ if (botsConfig.length === 0) {
     console.warn("⚠️ Chưa tìm thấy token nào trong Environment Variables trên Render!");
 }
 
-// 3. Khởi tạo lệnh Slash Command chung và riêng cho từng bot
+// 3. Khởi tạo danh sách lệnh Slash Command
 const baseCommands = [
     new SlashCommandBuilder().setName('treo').setDescription('Đưa TẤT CẢ các bot vào chung 1 phòng Voice')
         .addStringOption(o => o.setName('channel_id').setDescription('ID phòng Voice').setRequired(true)),
@@ -54,7 +54,7 @@ botsConfig.forEach(bot => {
 
 const commandsJson = baseCommands.map(command => command.toJSON());
 
-// 4. Khởi chạy từng bot
+// 4. Khởi chạy từng bot một cách độc lập tuyệt đối
 botsConfig.forEach(config => {
     const client = new Client({
         intents: [
@@ -63,13 +63,16 @@ botsConfig.forEach(config => {
         ]
     });
 
+    // Cố định ID riêng biệt cho từng client để tránh bị đè biến
+    const currentBotId = config.id;
+
     client.once('ready', async () => {
-        console.log(`🤖 [Thuần Treo] Bot ${config.id} đã sẵn sàng: ${client.user.tag}`);
+        console.log(`🤖 [Thuần Treo] Bot ${currentBotId} đã sẵn sàng: ${client.user.tag}`);
         const rest = new REST({ version: '10' }).setToken(config.token);
         try {
             await rest.put(Routes.applicationCommands(config.clientId), { body: commandsJson });
         } catch (error) {
-            console.error(`Lỗi đăng ký lệnh cho Bot ${config.id}:`, error);
+            console.error(`Lỗi đăng ký lệnh cho Bot ${currentBotId}:`, error);
         }
     });
 
@@ -77,6 +80,7 @@ botsConfig.forEach(config => {
         if (!interaction.isChatInputCommand()) return;
         const { commandName, guildId } = interaction;
 
+        // Lệnh treo tất cả: Tất cả các bot đều vào phòng và phản hồi đúng tên từng con
         if (commandName === 'treo') {
             await interaction.deferReply({ ephemeral: true });
             try {
@@ -87,7 +91,7 @@ botsConfig.forEach(config => {
                     return await interaction.editReply('❌ ID phòng Voice không hợp lệ!');
                 }
 
-                joinVoiceChannel({
+                const connection = joinVoiceChannel({
                     channelId: targetChannel.id,
                     guildId: guildId,
                     adapterCreator: interaction.guild.voiceAdapterCreator,
@@ -95,12 +99,20 @@ botsConfig.forEach(config => {
                     selfMute: true
                 });
 
-                await interaction.editReply(`✅ Bot ${config.id} đã vào phòng **${targetChannel.name}** để treo!`);
+                connection.on('stateChange', (oldState, newState) => {
+                    if (newState.status === 'disconnected') {
+                        try { connection.rejoin(); } catch (e) {}
+                    }
+                });
+
+                await interaction.editReply(`✅ **Bot ${currentBotId}** đã vào phòng **${targetChannel.name}** để treo!`);
             } catch (err) {
-                await interaction.editReply('❌ Có lỗi xảy ra khi kết nối!');
+                console.error(err);
+                await interaction.editReply('❌ Có lỗi xảy ra khi kết nối vào phòng voice!');
             }
         }
-        else if (commandName === `treobot${config.id}`) {
+        // Lệnh treo riêng biệt cho từng con bot
+        else if (commandName === `treobot${currentBotId}`) {
             await interaction.deferReply({ ephemeral: true });
             try {
                 const channelId = interaction.options.getString('channel_id');
@@ -118,7 +130,7 @@ botsConfig.forEach(config => {
                     selfMute: true
                 });
 
-                await interaction.editReply(`✅ Riêng **Bot ${config.id}** đã vào phòng **${targetChannel.name}** thành công!`);
+                await interaction.editReply(`✅ Riêng **Bot ${currentBotId}** đã vào phòng **${targetChannel.name}** thành công!`);
             } catch (err) {
                 await interaction.editReply('❌ Có lỗi xảy ra!');
             }
@@ -128,20 +140,19 @@ botsConfig.forEach(config => {
             const conn = getVoiceConnection(guildId);
             if (conn) {
                 conn.destroy();
-                await interaction.editReply(`🛑 Bot ${config.id} đã rời phòng voice.`);
+                await interaction.editReply(`🛑 **Bot ${currentBotId}** đã rời phòng voice.`);
             } else {
-                await interaction.editReply(`❌ Bot ${config.id} không ở trong phòng nào.`);
+                await interaction.editReply(`❌ **Bot ${currentBotId}** không ở trong phòng nào.`);
             }
         }
         else if (commandName === 'status') {
             const conn = getVoiceConnection(guildId);
             const status = conn ? 'Đang treo voice 24/7' : 'Đang rảnh';
-            await interaction.reply({ content: `📊 **Bot ${config.id}**: ${status}`, ephemeral: true });
+            await interaction.reply({ content: `📊 **Bot ${currentBotId}**: ${status}`, ephemeral: true });
         }
     });
 
     client.login(config.token).catch(err => {
-        console.error(`⚠️ Bỏ qua Bot ${config.id} do Token không hợp lệ:`, err.message);
+        console.error(`⚠️ Bỏ qua Bot ${currentBotId} do Token không hợp lệ:`, err.message);
     });
 });
- 
