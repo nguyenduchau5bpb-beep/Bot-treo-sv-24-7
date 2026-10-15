@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActivityType } = require('discord.js');
 const { joinVoiceChannel, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
 const http = require('http');
 const os = require('os');
@@ -15,7 +15,7 @@ const server = http.createServer((req, res) => {
         return;
     }
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end('<h1>Bot Voice God-Mode Ultimate 24/7 is running like a beast!</h1>');
+    res.end('<h1>🔥 Bot Voice God-Mode Ultimate v4 is running smoothly!</h1>');
 });
 
 const PORT = process.env.PORT || 3000;
@@ -77,10 +77,12 @@ const botStartTime = Date.now();
 
 client.once('ready', async () => {
     console.log(`🤖 [GOD-MODE] Bot đã thức giấc và sẵn sàng càn quét: ${client.user.tag}`);
+    client.user.setActivity('🎧 Treo Voice 24/7 Không Nghỉ', { type: ActivityType.Streaming, url: 'https://twitch.tv/discord' });
+    
     const rest = new REST({ version: '10' }).setToken(token);
     try {
         await rest.put(Routes.applicationCommands(clientId), { body: commands });
-        console.log('✅ Đã nạp thành công toàn bộ vũ khí tối tân!');
+        console.log('✅ Đã nạp thành công bộ lệnh giao diện sinh động v4!');
     } catch (error) {
         console.error('Lỗi đăng ký lệnh:', error);
     }
@@ -109,7 +111,12 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (!targetChannel || targetChannel.type !== 2) {
-                return await interaction.editReply('❌ ID phòng Voice không hợp lệ hoặc Bot chưa được cấp quyền **Xem kênh (View Channel)** ở server đó!');
+                const errorEmbed = new EmbedBuilder()
+                    .setColor('#FF0000')
+                    .setTitle('❌ LỖI KẾT NỐI PHÒNG VOICE')
+                    .setDescription('> ID phòng Voice không hợp lệ hoặc Bot chưa được cấp quyền **Xem kênh (View Channel)** ở server đó rồi đại gia ơi! 😭')
+                    .setTimestamp();
+                return await interaction.editReply({ embeds: [errorEmbed] });
             }
 
             const targetGuildId = targetChannel.guild.id;
@@ -134,17 +141,12 @@ client.on('interactionCreate', async interaction => {
                 timestamp: Date.now()
             });
 
-            // Cơ chế tự phục hồi kết nối tối thượng chống rớt mạng vĩnh viễn
             connection.on('stateChange', async (oldState, newState) => {
                 if (newState.status === VoiceConnectionStatus.Disconnected) {
                     try {
                         await entersState(connection, VoiceConnectionStatus.Connecting, 5_000);
                     } catch {
-                        try { 
-                            connection.rejoin(); 
-                        } catch (e) {
-                            activeConnections.delete(targetGuildId);
-                        }
+                        try { connection.rejoin(); } catch (e) { activeConnections.delete(targetGuildId); }
                     }
                 } else if (newState.status === VoiceConnectionStatus.Destroyed) {
                     activeConnections.delete(targetGuildId);
@@ -153,17 +155,21 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF66')
-                .setTitle('🚀 Kích Hoạt Treo Voice Thành Công')
+                .setTitle('🚀 KÍCH HOẠT TREO VOICE THÀNH CÔNG')
+                .setDescription('> Hệ thống đa luồng độc lập đã chính thức vận hành 24/7! ⚡')
                 .addFields(
-                    { name: '🔊 Phòng Voice', value: `\`${targetChannel.name}\``, inline: true },
-                    { name: '🏠 Máy Chủ', value: `\`${targetChannel.guild.name}\``, inline: true }
+                    { name: '🔊 Phòng Voice', value: `\`\`\`fix\n${targetChannel.name}\`\`\``, inline: true },
+                    { name: '🏠 Máy Chủ', value: `\`\`\`css\n${targetChannel.guild.name}\`\`\``, inline: true },
+                    { name: '🟢 Trạng Thái', value: '`Đang kết nối & cày giờ ổn định`', inline: false }
                 )
-                .setTimestamp();
+                .setTimestamp()
+                .setFooter({ text: 'Bot Voice Gaming Hub Ultimate' });
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
             console.error(err);
-            await interaction.editReply('❌ Lỗi kết nối cực mạnh! Kiểm tra lại quyền của bot đi mày.');
+            const errEmbed = new EmbedBuilder().setColor('#FF3300').setDescription('❌ Lỗi kết nối cực mạnh! Kiểm tra lại quyền của bot đi mày.');
+            await interaction.editReply({ embeds: [errEmbed] });
         }
     }
     else if (commandName === 'thoat') {
@@ -171,9 +177,11 @@ client.on('interactionCreate', async interaction => {
         if (activeConnections.has(guildId)) {
             try { activeConnections.get(guildId).connection.destroy(); } catch (e) {}
             activeConnections.delete(guildId);
-            await interaction.editReply('🛑 Đã đá bot ra khỏi phòng voice và xóa kết nối ở server này.');
+            const embed = new EmbedBuilder().setColor('#FFAA00').setTitle('🛑 ĐÃ RỜI PHÒNG VOICE').setDescription('> Bot đã ngắt kết nối và thu hồi quân lực khỏi server này.');
+            await interaction.editReply({ embeds: [embed] });
         } else {
-            await interaction.editReply('❌ Bot có đang treo cái khỉ gì ở server này đâu mà đòi thoát.');
+            const embed = new EmbedBuilder().setColor('#FF0000').setDescription('❌ Bot có đang treo cái khỉ gì ở server này đâu mà đòi thoát.');
+            await interaction.editReply({ embeds: [embed] });
         }
     }
     else if (commandName === 'status') {
@@ -185,22 +193,24 @@ client.on('interactionCreate', async interaction => {
             const seconds = Math.floor((uptimeMs % (1000 * 60)) / 1000);
 
             const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle('📊 Trạng Thái Treo Tại Server Này')
+                .setColor('#0099FF')
+                .setTitle('📊 TRẠNG THÁI TREO TẠI SERVER')
                 .addFields(
                     { name: '🔊 Phòng Đang Treo', value: `\`${info.channelName}\``, inline: true },
-                    { name: '⏱️ Thời Gian Chạy', value: `\`${hours}h ${minutes}m ${seconds}s\``, inline: false }
+                    { name: '⏱️ Thời Gian Chạy', value: `\`${hours} giờ ${minutes} phút ${seconds} giây\``, inline: false }
                 )
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed] });
         } else {
-            await interaction.reply({ content: '📊 Server này đang rảnh rỗi, bot chưa được lệnh treo phòng nào cả.' });
+            const embed = new EmbedBuilder().setColor('#FFCC00').setDescription('📊 Server này đang rảnh rỗi, bot chưa được lệnh treo phòng nào cả.');
+            await interaction.reply({ embeds: [embed] });
         }
     }
     else if (commandName === 'listtreo') {
         if (activeConnections.size === 0) {
-            return await interaction.reply({ content: '💤 Bot hiện đang không treo ở bất kỳ phòng voice nào trên toàn bộ hệ thống.' });
+            const embed = new EmbedBuilder().setColor('#888888').setDescription('💤 Bot hiện đang không treo ở bất kỳ phòng voice nào trên toàn bộ hệ thống.');
+            return await interaction.reply({ embeds: [embed] });
         }
 
         let desc = '';
@@ -209,12 +219,12 @@ client.on('interactionCreate', async interaction => {
             const uptimeMs = Date.now() - info.timestamp;
             const hours = Math.floor(uptimeMs / (1000 * 60 * 60));
             const minutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
-            desc += `**${index++}. Server:** \`${info.guildName}\`\n   └ **Phòng:** \`${info.channelName}\` (Đã treo: \`${hours}h ${minutes}m\`)\n\n`;
+            desc += `🔹 **${index++}. Server:** \`${info.guildName}\`\n   └ 🔊 **Phòng:** \`${info.channelName}\` (Đã treo: \`${hours}h ${minutes}m\`)\n\n`;
         }
 
         const embed = new EmbedBuilder()
             .setColor('#FF00FF')
-            .setTitle(`👑 Tổng Hợp Các Phòng Đang Treo (${activeConnections.size})`)
+            .setTitle(`👑 DANH SÁCH TOÀN BỘ PHÒNG ĐANG TREO (${activeConnections.size})`)
             .setDescription(desc)
             .setTimestamp();
 
@@ -236,10 +246,10 @@ client.on('interactionCreate', async interaction => {
 
         const broadcastEmbed = new EmbedBuilder()
             .setColor('#FFCC00')
-            .setTitle('📢 Thông Báo Từ Quản Trị Viên Bot')
-            .setDescription(noiDung)
+            .setTitle('📢 THÔNG BÁO TỪ QUẢN TRỊ VIÊN')
+            .setDescription(`> ${noiDung}`)
             .setTimestamp()
-            .setFooter({ text: 'Bot Voice 24/7 Broadcast System' });
+            .setFooter({ text: 'Broadcast System • 24/7 Service' });
 
         for (const [gId, g] of client.guilds.cache) {
             try {
@@ -255,7 +265,12 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        await interaction.editReply(`✅ Đã gửi thông báo thành công tới **${successCount}** máy chủ! (Thất bại/Không có quyền: ${failCount})`);
+        const resEmbed = new EmbedBuilder()
+            .setColor('#00FF66')
+            .setTitle('✅ GỬI THÔNG BÁO HOÀN TẤT')
+            .setDescription(`- Đã phát thành công tới: **${successCount}** máy chủ\n- Thất bại / Kẹt quyền: **${failCount}** máy chủ`);
+
+        await interaction.editReply({ embeds: [resEmbed] });
     }
     else if (commandName === 'system') {
         const totalMemory = (os.totalmem() / 1024 / 1024).toFixed(2);
@@ -268,27 +283,39 @@ client.on('interactionCreate', async interaction => {
         const bMinutes = Math.floor((botUptimeMs % (1000 * 60 * 60)) / (1000 * 60));
 
         const embed = new EmbedBuilder()
-            .setColor('#9900ff')
-            .setTitle('💻 Thông Số Hệ Thống Tối Tân')
+            .setColor('#9900FF')
+            .setTitle('💻 THÔNG SỐ HỆ THỐNG VIP')
             .addFields(
                 { name: '🧠 RAM Bot Đang Dùng', value: `\`${usedMemory} MB\``, inline: true },
                 { name: '🖥️ RAM Trống / Tổng', value: `\`${freeMemory} MB / ${totalMemory} MB\``, inline: true },
                 { name: '⚙️ CPU Info', value: `\`${cpuModel}\``, inline: false },
-                { name: '⏳ Uptime Bot', value: `\`${bHours} giờ ${bMinutes} phút\``, inline: false },
-                { name: '🌐 Số Server Đang Treo', value: `\`${activeConnections.size} kết nối hoạt động\``, inline: false }
+                { name: '⏳ Uptime Bot', value: `\`${bHours} giờ ${bMinutes} phút\``, inline: true },
+                { name: '🌐 Kết Nối Voice', value: `\`${activeConnections.size} phòng đang chạy\`\``, inline: true }
             )
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
     }
     else if (commandName === 'ping') {
-        await interaction.reply({ content: `🏓 Pong! Độ trễ phản hồi API: **${client.ws.ping}ms**` });
+        const sent = await interaction.reply({ content: '🏓 Đang đo đạc tốc độ mạng...', fetchReply: true });
+        const latency = sent.createdTimestamp - interaction.createdTimestamp;
+        
+        const embed = new EmbedBuilder()
+            .setColor('#00FFFF')
+            .setTitle('🏓 PONG! ĐO LƯỜNG TỐC ĐỘ')
+            .addFields(
+                { name: '⚡ Độ Trễ Phản Hồi API', value: `\`${latency}ms\``, inline: true },
+                { name: '📡 Độ Trễ WebSocket', value: `\`${client.ws.ping}ms\``, inline: true }
+            )
+            .setTimestamp();
+
+        await interaction.editReply({ content: '', embeds: [embed] });
     }
     else if (commandName === 'serverinfo') {
         const guilds = client.guilds.cache.map(g => `• **${g.name}** (\`${g.memberCount} thành viên\`)`).join('\n') || 'Chưa tham gia server nào.';
         const embed = new EmbedBuilder()
-            .setColor('#ffcc00')
-            .setTitle(`🏰 Danh Sách Máy Chủ Bot Đã Vào (${client.guilds.cache.size})`)
+            .setColor('#FFA500')
+            .setTitle(`🏰 DANH SÁCH MÁY CHỦ (${client.guilds.cache.size})`)
             .setDescription(guilds)
             .setTimestamp();
 
@@ -301,33 +328,36 @@ client.on('interactionCreate', async interaction => {
         if (!isOwner && !isAdmin) {
             return await interaction.reply({ content: '❌ Mày không có quyền Admin/Owner ở server này để ép restart!', ephemeral: true });
         }
-        await interaction.reply({ content: '🔄 Đang ra lệnh ép khởi động lại tiến trình...' });
-        console.log('⚠️ Nhận lệnh ép restart. Đang ngắt tiến trình để Render tự tải lại bản mới...');
+        await interaction.reply({ content: '🔄 Đang ra lệnh ép khởi động lại tiến trình hệ thống...' });
         setTimeout(() => process.exit(0), 1000);
     }
     else if (commandName === 'help') {
         const helpEmbed = new EmbedBuilder()
             .setColor('#00FFFF')
-            .setTitle('📖 Bảng Điều Khiển God-Mode Ultimate')
+            .setTitle('📖 BẢNG ĐIỀU KHIỂN GOD-MODE ULTIMATE')
+            .setDescription('> Danh sách toàn bộ lệnh tối tân hỗ trợ cày giờ voice 24/7:')
             .addFields(
-                { name: '/treo [channel_id]', value: 'Đưa bot vào phòng voice (treo đa luồng mọi server độc lập).' },
-                { name: '/thoat', value: 'Rời phòng voice tại server hiện tại.' },
-                { name: '/status', value: 'Xem thời gian treo voice ở server đang đứng.' },
-                { name: '/listtreo', value: 'Liệt kê tất cả các phòng voice bot đang treo trên toàn vũ trụ.' },
-                { name: '/broadcast [noidung]', value: '📢 [Admin/Owner] Gửi thông báo tới mọi server bot tham gia.' },
-                { name: '/system', value: 'Kiểm tra phần cứng RAM, CPU và thống kê kết nối.' },
-                { name: '/ping', value: 'Đo tốc độ mạng của bot.' },
-                { name: '/serverinfo', value: 'Xem toàn bộ danh sách server bot góp mặt.' },
-                { name: '/restart', value: 'Khởi động lại bot từ xa.' }
+                { name: '🚀 `/treo [channel_id]`', value: 'Đưa bot vào phòng voice độc lập mọi server.' },
+                { name: '🛑 `/thoat`', value: 'Đá bot rời khỏi phòng voice tại server hiện tại.' },
+                { name: '📊 `/status`', value: 'Xem thông tin thời gian treo voice ở server đang đứng.' },
+                { name: '👑 `/listtreo`', value: 'Liệt kê toàn bộ các phòng voice đang chạy trên toàn hệ thống.' },
+                { name: '📢 `/broadcast [noidung]`', value: '[Admin/Owner] Phát thông báo đến mọi server.' },
+                { name: '💻 `/system`', value: 'Kiểm tra tài nguyên phần cứng RAM, CPU và kết nối.' },
+                { name: '🏓 `/ping`', value: 'Đo tốc độ phản hồi và độ trễ mạng.' },
+                { name: '🏰 `/serverinfo`', value: 'Xem danh sách các máy chủ bot đang góp mặt.' },
+                { name: '🔄 `/restart`', value: '[Admin/Owner] Ép bot khởi động lại từ xa.' }
             )
-            .setTimestamp();
+            .setTimestamp()
+            .setFooter({ text: 'Bảng điều khiển độc quyền - God-Mode Hub' });
 
         await interaction.reply({ embeds: [helpEmbed] });
     }
 });
 
 if (token) {
-    client.login(token.trim()).catch(err => {
-        console.error('⚠️ Lỗi định dạng hoặc sai Token:', err.message);
+    client.login(token.trim()).then(() => {
+        console.log('✅ Đã kết nối thành công tới Discord API với giao diện v4!');
+    }).catch(err => {
+        console.error('🔥 LỖI LOGIN CHI TIẾT:', err);
     });
 }
