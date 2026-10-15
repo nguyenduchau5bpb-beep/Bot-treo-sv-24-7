@@ -15,7 +15,7 @@ const server = http.createServer((req, res) => {
         return;
     }
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end('<h1>🔥 Bot Voice God-Mode Ultimate v4 is running smoothly!</h1>');
+    res.end('<h1>🔥 Bot Voice God-Mode Ultimate v5 is running smoothly!</h1>');
 });
 
 const PORT = process.env.PORT || 3000;
@@ -25,10 +25,6 @@ server.listen(PORT, () => {
 
 const token = process.env.TOKEN_1 || process.env.Token1;
 const clientId = process.env.CLIENT_ID_1 || process.env.ID_1 || process.env.Id1;
-
-if (!token || !clientId) {
-    console.error("⚠️ Quên cấu hình TOKEN_1 hoặc CLIENT_ID_1 trên Render rồi con giời ơi!");
-}
 
 const commands = [
     new SlashCommandBuilder()
@@ -82,7 +78,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(token);
     try {
         await rest.put(Routes.applicationCommands(clientId), { body: commands });
-        console.log('✅ Đã nạp thành công bộ lệnh giao diện sinh động v4!');
+        console.log('✅ Đã nạp thành công bộ lệnh giao diện sinh động v5!');
     } catch (error) {
         console.error('Lỗi đăng ký lệnh:', error);
     }
@@ -224,7 +220,7 @@ client.on('interactionCreate', async interaction => {
 
         const embed = new EmbedBuilder()
             .setColor('#FF00FF')
-            .setTitle(`👑 DANH SÁCH TOÀN BỘ PHÒNG ĐANG TREO (${activeConnections.size})`)
+            .setTitle(`👑 DANH SÁCH TOÀN BỘ PHÒNG Đang treo (${activeConnections.size})`)
             .setDescription(desc)
             .setTimestamp();
 
@@ -290,7 +286,7 @@ client.on('interactionCreate', async interaction => {
                 { name: '🖥️ RAM Trống / Tổng', value: `\`${freeMemory} MB / ${totalMemory} MB\``, inline: true },
                 { name: '⚙️ CPU Info', value: `\`${cpuModel}\``, inline: false },
                 { name: '⏳ Uptime Bot', value: `\`${bHours} giờ ${bMinutes} phút\``, inline: true },
-                { name: '🌐 Kết Nối Voice', value: `\`${activeConnections.size} phòng đang chạy\`\``, inline: true }
+                { name: '🌐 Kết Nối Voice', value: `\`${activeConnections.size} phòng đang chạy\``, inline: true }
             )
             .setTimestamp();
 
@@ -354,10 +350,16 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-if (token) {
+console.log("🔍 Kiểm tra biến môi trường:");
+console.log("- TOKEN_1 tồn tại:", token ? "CÓ (" + token.substring(0, 5) + "...)" : "KHÔNG ❌");
+console.log("- CLIENT_ID_1 tồn tại:", clientId ? "CÓ" : "KHÔNG ❌");
+
+if (!token || !clientId) {
+    console.error("🔥 NGUY HIỂM: Thiếu Token hoặc Client ID trên Render! Vào tab Environment kiểm tra ngay!");
+} else {
     client.login(token.trim()).then(() => {
-        console.log('✅ Đã kết nối thành công tới Discord API với giao diện v4!');
+        console.log('✅ [SUCCESS] Đã kết nối thành công tới Discord API!');
     }).catch(err => {
-        console.error('🔥 LỖI LOGIN CHI TIẾT:', err);
+        console.error('🔥 LỖI LOGIN CHI TIẾT TỪ DISCORD:', err);
     });
 }
